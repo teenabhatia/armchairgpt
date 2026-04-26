@@ -6,7 +6,7 @@ using Kimi-K2.5 (large-context reasoning via Moonshot AI API).
 
 import os
 from typing import Optional
-from openai import OpenAI
+from huggingface_hub import InferenceClient
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -57,14 +57,11 @@ class GenerationError(Exception):
 class AnswerGenerator:
 
     def __init__(self, api_key: Optional[str] = None):
-        key = api_key or os.getenv("KIMI_API_KEY")
+        key = api_key or os.getenv("HF_TOKEN")
         if not key:
-            raise GenerationError("KIMI_API_KEY not set. Add it to your .env file.")
-        self._client = OpenAI(
-            api_key=key,
-            base_url="https://api.moonshot.cn/v1",
-        )
-        self._model = os.getenv("KIMI_MODEL", "kimi-k2")
+            raise GenerationError("HF_TOKEN not set. Add your Hugging Face token to .env.")
+        self._client = InferenceClient(api_key=key)
+        self._model = "moonshotai/Kimi-K2.5:novita"
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -117,6 +114,7 @@ class AnswerGenerator:
                 ],
                 temperature=0.3,
                 max_tokens=800,
+                extra_body={"thinking": {"type": "disabled"}},
             )
         except Exception as e:
             raise GenerationError(f"Kimi API call failed: {e}") from e
