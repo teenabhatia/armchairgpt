@@ -9,8 +9,7 @@ import os
 import time
 from typing import Optional
 from pydantic import BaseModel, field_validator, model_validator
-from google import genai
-from google.genai import types
+from mistralai.client import Mistral
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -141,11 +140,11 @@ Rules:
 
 class QueryPlanner:
     def __init__(self, api_key: Optional[str] = None):
-        key = api_key or os.getenv("GEMINI_API_KEY")
+        key = api_key or os.getenv("MISTRAL_API_KEY")
         if not key:
-            raise PlannerError("GEMINI_API_KEY not set. Add it to your .env file.")
-        self._client = genai.Client(api_key=key)
-        self._model_name = "gemini-2.5-flash"
+            raise PlannerError("MISTRAL_API_KEY not set. Add it to your .env file.")
+        self._client = Mistral(api_key=key)
+        self._model_name = "mistral-small-latest"
 
     # ── Input guardrails ──────────────────────────────────────────────────────
 
@@ -170,20 +169,20 @@ class QueryPlanner:
     # ── LLM call ─────────────────────────────────────────────────────────────
 
     def _call_llm(self, query: str, retries: int = 3) -> dict:
-        prompt = f'User query: "{query}"\n\nReturn the JSON plan.'
+        messages = [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "user", "content": f'User query: "{query}"\n\nReturn the JSON plan.'},
+        ]
         last_error = None
         for attempt in range(retries):
             try:
-                response = self._client.models.generate_content(
+                response = self._client.chat.complete(
                     model=self._model_name,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=_SYSTEM_PROMPT,
-                        response_mime_type="application/json",
-                        temperature=0.0,
-                    ),
+                    messages=messages,
+                    response_format={"type": "json_object"},
+                    temperature=0.0,
                 )
-                raw = response.text.strip()
+                raw = response.choices[0].message.content.strip()
                 try:
                     return json.loads(raw)
                 except json.JSONDecodeError as e:
@@ -192,9 +191,8 @@ class QueryPlanner:
                 raise
             except Exception as e:
                 last_error = e
-                # Retry on transient server errors (503, 429)
                 if attempt < retries - 1 and any(
-                    code in str(e) for code in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED")
+                    code in str(e) for code in ("503", "429", "rate", "unavailable")
                 ):
                     time.sleep(2 ** attempt)
                     continue
