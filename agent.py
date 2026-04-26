@@ -6,11 +6,13 @@ Tools 1-2 implemented. Tools 3-4 and answer generation are stubs.
 import json
 from tools.query_planner import QueryPlanner, QueryPlan, PlannerError
 from tools.evidence_retrieval import EvidenceRetriever, RetrievalResult, RetrievalError
+from tools.episode_resolution import EpisodeResolver, ResolutionResult, ResolutionError
 
 
 def run(user_query: str) -> dict:
     planner = QueryPlanner()
     retriever = EvidenceRetriever()
+    resolver = EpisodeResolver()
 
     # ── Tool 1: Query Planning ────────────────────────────────────────────────
     try:
@@ -49,11 +51,23 @@ def run(user_query: str) -> dict:
               f"{c.start_ms//1000}s–{c.end_ms//1000}s | sim={c.similarity_score:.3f}")
         print(f"      {c.text[:120]}...")
 
-    # ── Tool 3: Episode Resolution (stub) ─────────────────────────────────────
-    print("\n[Tool 3] Episode Resolution — not yet implemented")
+    # ── Tool 3: Episode Resolution ────────────────────────────────────────────
+    try:
+        resolution = resolver.resolve(retrieval)
+    except ResolutionError as e:
+        return {"error": str(e), "action": "abort"}
+
+    print(f"\n[Tool 3] Resolved {resolution.total_episodes} episode(s):")
+    for i, ep in enumerate(resolution.episodes, 1):
+        guests_str = ", ".join(ep.guests) if ep.guests else "unknown guests"
+        print(f"  [{i}] {ep.episode_title}  (score={ep.relevance_score:.3f}, "
+              f"guests={guests_str}, segments={len(ep.segments)})")
+        for seg in ep.segments[:2]:
+            t0, t1 = seg.start_ms // 1000, seg.end_ms // 1000
+            print(f"      {t0}s–{t1}s  {seg.text[:120]}...")
 
     # ── Answer Generation (stub) ──────────────────────────────────────────────
-    print("[Generation] Answer synthesis — not yet implemented")
+    print("\n[Generation] Answer synthesis — not yet implemented")
 
     # ── Tool 4: Support Verification (stub) ──────────────────────────────────
     print("[Tool 4] Support Verification — not yet implemented")
@@ -64,9 +78,12 @@ def run(user_query: str) -> dict:
             "total_found": retrieval.total_found,
             "query_text_used": retrieval.query_text_used,
             "filters_relaxed": retrieval.filters_relaxed,
-            "chunks": [c.model_dump() for c in retrieval.chunks],
         },
-        "status": "pipeline incomplete — Tools 3-4 and answer generation pending",
+        "resolution": {
+            "total_episodes": resolution.total_episodes,
+            "episodes": [e.model_dump() for e in resolution.episodes],
+        },
+        "status": "pipeline incomplete — answer generation and Tool 4 pending",
     }
 
 
