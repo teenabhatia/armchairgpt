@@ -16,7 +16,7 @@ load_dotenv()
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-INTENT_VALUES = {"QA", "search", "clip_discovery", "clarify"}
+INTENT_VALUES = {"QA", "search", "clip_discovery", "mention_lookup", "frequency", "clarify"}
 STRATEGY_VALUES = {"semantic", "hybrid", "metadata_first"}
 MAX_QUERY_LEN = 500
 MIN_QUERY_LEN = 3
@@ -100,7 +100,7 @@ Hosts are Dax Shepard and Monica Padman. Guests are the interviewees.
 Return ONLY valid JSON matching this exact schema — no markdown, no explanation:
 
 {
-  "intent": "<QA | search | clip_discovery | clarify>",
+  "intent": "<QA | search | clip_discovery | mention_lookup | frequency | clarify>",
   "entities": {
     "topic": "<main topic or null>",
     "persons": ["<person names mentioned, excluding hosts>"],
@@ -121,6 +121,8 @@ Intent guide:
 - QA: user wants a specific factual answer ("When did Dax talk about X?")
 - search: user wants to explore a topic ("episodes about mental health")
 - clip_discovery: user wants shareable/quotable moments ("find a funny clip about marriage")
+- mention_lookup: user wants to know who talked about whom ("what has guest X said about person Y?", "who has mentioned Kristen Bell?", "who has talked about who")
+- frequency: user wants a count of how often a word/phrase appears ("how many times has Dax said gratitude?", "how often do guests mention therapy?")
 - clarify: query is too vague to plan (set clarification_needed)
 
 Strategy guide:
@@ -133,6 +135,8 @@ Rules:
 - Default top_k=8; use higher (12-15) for clip_discovery or broad searches
 - Do not include Dax Shepard or Monica Padman in entities.persons (they are always the hosts)
 - Always include at least 2 keywords even if they overlap with topic
+- For mention_lookup: put the person being mentioned in entities.persons; put the speaker (if specified) in filters.guest
+- For frequency: put the word/phrase to count in entities.keywords
 """
 
 
