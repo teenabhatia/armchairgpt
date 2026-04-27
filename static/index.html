@@ -348,17 +348,18 @@
     return `<div class="trace">${steps}</div>`;
   }
 
-  function ytLink(url, startMs) {
+  function ytLink(url, timestampMs) {
     if (!url) return null;
-    const t = Math.floor((startMs || 0) / 1000);
+    if (timestampMs == null || timestampMs <= 0) return url;  // base URL, no timestamp
+    const t = Math.floor(timestampMs / 1000);
     const sep = url.includes('?') ? '&' : '?';
-    return t > 0 ? `${url}${sep}t=${t}` : url;
+    return `${url}${sep}t=${t}`;
   }
 
   function buildCitations(citations) {
     if (!citations || !citations.length) return '';
     const cards = citations.slice(0,4).map(c => {
-      const yt = ytLink(c.youtube_url, c.start_ms);
+      const yt = ytLink(c.youtube_url, c.youtube_timestamp_ms);
       const ytBtn = yt
         ? `<a class="ep-yt" href="${escHtml(yt)}" target="_blank" rel="noopener">▶ Watch on YouTube</a>`
         : '';

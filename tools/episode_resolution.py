@@ -25,6 +25,7 @@ class EpisodeSegment(BaseModel):
     text: str
     speakers: list[str]
     peak_similarity: float
+    youtube_timestamp_ms: Optional[int] = None  # accurate YT time (set only for mentions route)
 
 
 class ResolvedEpisode(BaseModel):

@@ -93,13 +93,17 @@ def run(user_query: str) -> dict:
                     episode_id=r.episode_id, episode_title=r.episode_title,
                     guests=[], relevance_score=1.0, segments=[],
                     youtube_url=r.youtube_url)
-            # Use exact YouTube timestamp if available, otherwise fall back to transcript time
+            # youtube_start_ms lands ~15s after the quote due to SRT caption lag.
+            # Subtract 15s so the link opens right at the quote.
+            _YT_CORRECTION_MS = 15_000
+            yt_ts = max(0, r.youtube_start_ms - _YT_CORRECTION_MS) if r.youtube_start_ms is not None else None
             seg_start = r.youtube_start_ms if r.youtube_start_ms is not None else r.start_ms
             seg_end   = r.youtube_end_ms   if r.youtube_end_ms   is not None else r.end_ms
             eps_by_id[r.episode_id].segments.append(EpisodeSegment(
                 start_ms=seg_start, end_ms=seg_end,
                 text=f"{r.speaker}: \"{r.quote}\"",
-                speakers=[r.speaker], peak_similarity=1.0))
+                speakers=[r.speaker], peak_similarity=1.0,
+                youtube_timestamp_ms=yt_ts))
         resolution = ResolutionResult(
             episodes=list(eps_by_id.values())[:5],
             total_episodes=len(eps_by_id))

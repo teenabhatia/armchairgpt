@@ -40,6 +40,7 @@ class Citation(BaseModel):
     end_ms: int
     quote: str
     youtube_url: Optional[str] = None
+    youtube_timestamp_ms: Optional[int] = None  # accurate YT time for link; None = no timestamp
 
 
 class GeneratedAnswer(BaseModel):
@@ -131,6 +132,7 @@ class AnswerGenerator:
                 end_ms=ep.segments[0].end_ms if ep.segments else 0,
                 quote=ep.segments[0].text[:200] if ep.segments else "",
                 youtube_url=ep.youtube_url or None,
+                youtube_timestamp_ms=ep.segments[0].youtube_timestamp_ms if ep.segments else None,
             )
             for ep in resolution.episodes[:MAX_EPISODES_IN_CONTEXT]
             if ep.segments
