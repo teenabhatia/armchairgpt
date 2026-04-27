@@ -18,27 +18,29 @@ from tools.episode_resolution import ResolutionResult
 
 load_dotenv()
 
-_SYSTEM_PROMPT = """You are a fact-checking tool for ArmchairGPT.
+_SYSTEM_PROMPT = """You are a hallucination-detection tool for ArmchairGPT.
 
 You receive a generated answer and the transcript evidence it was based on.
-Your job is to identify any claims in the answer that are NOT directly supported
-by the provided evidence.
+Your job is to identify claims in the answer that CONTRADICT or are clearly
+incompatible with the provided evidence.
 
 Return ONLY valid JSON matching this exact schema — no markdown, no explanation:
 
 {
-  "supported": <true if ALL claims are grounded, false otherwise>,
+  "supported": <true if no claims contradict the evidence>,
   "unsupported_claims": ["<claim text>", ...],
   "action": "<return_answer | abstain | request_clarification>"
 }
 
 Action guide:
-- return_answer: all claims are supported OR only minor wording/style issues
-- abstain: one or more factual claims cannot be verified from the evidence
-- request_clarification: the answer is ambiguous or the query needs more detail
+- return_answer: no claims contradict the evidence (default — use this when in doubt)
+- abstain: a claim directly contradicts something in the evidence (wrong name, wrong fact)
+- request_clarification: the query itself is ambiguous and needs more detail
 
-Be strict: if a specific fact (name, date, quote, episode) is stated but not
-present in the evidence, list it as unsupported.
+IMPORTANT: The evidence is a SAMPLE of the full transcript — you will not see every
+detail. Only flag a claim if it is directly contradicted by the evidence you DO have.
+Do NOT flag claims simply because they are absent from the evidence sample.
+Inferential claims and summaries drawn from episode context are acceptable.
 """
 
 
@@ -79,10 +81,10 @@ class SupportVerifier:
 
     def _format_evidence_summary(self, resolution: ResolutionResult) -> str:
         lines = ["## Evidence"]
-        for ep in resolution.episodes[:4]:
+        for ep in resolution.episodes[:6]:
             lines.append(f"Episode: {ep.episode_title}")
-            for seg in ep.segments[:2]:
-                lines.append(f'  "{seg.text[:300]}"')
+            for seg in ep.segments[:3]:
+                lines.append(f'  "{seg.text[:500]}"')
         return "\n".join(lines)
 
     def _call_mistral(self, answer: GeneratedAnswer, resolution: ResolutionResult) -> dict:
@@ -122,12 +124,14 @@ class SupportVerifier:
         only on API/network errors.
         """
         if not answer.grounded:
+            # Generator itself said "not enough evidence" — pass its message through
+            # rather than replacing with the hallucination abstain warning.
             return VerificationResult(
-                supported=False,
-                unsupported_claims=["Answer was already flagged as ungrounded at generation."],
-                action="abstain",
+                supported=True,
+                unsupported_claims=[],
+                action="return_answer",
                 raw_answer=answer.answer,
-                final_answer=ABSTAIN_MESSAGE,
+                final_answer=answer.answer,
             )
 
         data = self._call_mistral(answer, resolution)
