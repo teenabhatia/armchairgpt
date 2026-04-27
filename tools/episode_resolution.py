@@ -4,6 +4,7 @@ Groups retrieved chunks by episode, merges temporally adjacent spans,
 and ranks episodes by aggregated relevance score.
 """
 
+from typing import Optional
 from pydantic import BaseModel
 from tools.evidence_retrieval import EvidenceChunk, RetrievalResult
 
@@ -32,6 +33,7 @@ class ResolvedEpisode(BaseModel):
     guests: list[str]
     relevance_score: float      # aggregated across all chunks from this episode
     segments: list[EpisodeSegment]
+    youtube_url: Optional[str] = None
 
 
 class ResolutionResult(BaseModel):
@@ -131,6 +133,7 @@ class EpisodeResolver:
                 guests=sample.guests,
                 relevance_score=agg_score,
                 segments=segments,
+                youtube_url=sample.youtube_url,
             ))
 
         # Rank episodes by aggregated score

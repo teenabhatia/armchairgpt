@@ -26,6 +26,9 @@ class MentionRecord(BaseModel):
     quote: str
     start_ms: int
     end_ms: int
+    youtube_url: Optional[str] = None
+    youtube_start_ms: Optional[int] = None
+    youtube_end_ms: Optional[int] = None
 
 
 class MentionsResult(BaseModel):
@@ -74,13 +77,17 @@ class MentionsLookup:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
+    _SELECT = """
+        SELECT e.file_stem, m.episode_id, m.speaker, m.about_person,
+               m.quote, m.start_ms, m.end_ms,
+               e.youtube_url, m.youtube_start_ms, m.youtube_end_ms
+        FROM mentions_llm m
+        JOIN episodes e ON m.episode_id = e.id
+    """
+
     def lookup_about(self, person: str, limit: int = DEFAULT_LIMIT) -> MentionsResult:
         """Who has talked about `person`, and what did they say?"""
-        sql = """
-            SELECT e.file_stem, m.episode_id, m.speaker, m.about_person,
-                   m.quote, m.start_ms, m.end_ms
-            FROM mentions m
-            JOIN episodes e ON m.episode_id = e.id
+        sql = self._SELECT + """
             WHERE m.about_person ILIKE %s
             ORDER BY e.created_at DESC
             LIMIT %s
@@ -95,11 +102,7 @@ class MentionsLookup:
 
     def lookup_by_speaker(self, person: str, limit: int = DEFAULT_LIMIT) -> MentionsResult:
         """Who has `person` talked about across all episodes?"""
-        sql = """
-            SELECT e.file_stem, m.episode_id, m.speaker, m.about_person,
-                   m.quote, m.start_ms, m.end_ms
-            FROM mentions m
-            JOIN episodes e ON m.episode_id = e.id
+        sql = self._SELECT + """
             WHERE m.speaker ILIKE %s
             ORDER BY e.created_at DESC
             LIMIT %s
@@ -114,11 +117,7 @@ class MentionsLookup:
 
     def lookup_connection(self, person_a: str, person_b: str, limit: int = DEFAULT_LIMIT) -> MentionsResult:
         """Did person_a and person_b ever talk about each other?"""
-        sql = """
-            SELECT e.file_stem, m.episode_id, m.speaker, m.about_person,
-                   m.quote, m.start_ms, m.end_ms
-            FROM mentions m
-            JOIN episodes e ON m.episode_id = e.id
+        sql = self._SELECT + """
             WHERE (m.speaker ILIKE %s AND m.about_person ILIKE %s)
                OR (m.speaker ILIKE %s AND m.about_person ILIKE %s)
             ORDER BY e.created_at DESC
@@ -137,7 +136,7 @@ class MentionsLookup:
         )
 
     def _row(self, r: tuple) -> MentionRecord:
-        ep_title, ep_id, speaker, about, quote, start_ms, end_ms = r
+        ep_title, ep_id, speaker, about, quote, start_ms, end_ms, yt_url, yt_start, yt_end = r
         return MentionRecord(
             episode_title=ep_title or "",
             episode_id=ep_id,
@@ -146,4 +145,7 @@ class MentionsLookup:
             quote=quote or "",
             start_ms=start_ms or 0,
             end_ms=end_ms or 0,
+            youtube_url=yt_url or None,
+            youtube_start_ms=yt_start,
+            youtube_end_ms=yt_end,
         )

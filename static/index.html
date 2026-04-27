@@ -153,6 +153,8 @@
     .citation .ep-title { color: var(--amber); font-weight: 600; margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .citation .ep-ts    { color: var(--sub); font-size: 11px; }
     .citation .ep-quote { color: var(--sub); font-size: 11px; margin-top: 4px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .citation .ep-yt    { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; background: #b91c1c; color: #fff; font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 4px; text-decoration: none; letter-spacing: 0.2px; }
+    .citation .ep-yt:hover { background: #991b1b; }
 
     /* ── Special states ── */
     .msg-clarify, .msg-notfound {
@@ -271,7 +273,7 @@
   <div class="logo">🎙️</div>
   <div class="header-text">
     <h1>ArmchairGPT</h1>
-    <p>Armchair Expert knowledge base · Powered by Kimi-K2.5 + pgvector</p>
+    <p>Armchair Expert knowledge base</p>
   </div>
 </header>
 
@@ -346,14 +348,28 @@
     return `<div class="trace">${steps}</div>`;
   }
 
+  function ytLink(url, startMs) {
+    if (!url) return null;
+    const t = Math.floor((startMs || 0) / 1000);
+    const sep = url.includes('?') ? '&' : '?';
+    return t > 0 ? `${url}${sep}t=${t}` : url;
+  }
+
   function buildCitations(citations) {
     if (!citations || !citations.length) return '';
-    const cards = citations.slice(0,4).map(c => `
+    const cards = citations.slice(0,4).map(c => {
+      const yt = ytLink(c.youtube_url, c.start_ms);
+      const ytBtn = yt
+        ? `<a class="ep-yt" href="${escHtml(yt)}" target="_blank" rel="noopener">▶ Watch on YouTube</a>`
+        : '';
+      return `
       <div class="citation">
         <div class="ep-title">${escHtml(c.episode_title)}</div>
         <div class="ep-ts">⏱ ${msToTs(c.start_ms)} – ${msToTs(c.end_ms)}</div>
         ${c.quote ? `<div class="ep-quote">"${escHtml(c.quote)}"</div>` : ''}
-      </div>`).join('');
+        ${ytBtn}
+      </div>`;
+    }).join('');
     return `<div class="citations">${cards}</div>`;
   }
 

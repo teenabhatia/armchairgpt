@@ -6,6 +6,7 @@ using Kimi-K2.5 (large-context reasoning via Moonshot AI API).
 
 import os
 from typing import Optional
+from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 from huggingface_hub import InferenceClient
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -38,6 +39,7 @@ class Citation(BaseModel):
     start_ms: int
     end_ms: int
     quote: str
+    youtube_url: Optional[str] = None
 
 
 class GeneratedAnswer(BaseModel):
@@ -128,6 +130,7 @@ class AnswerGenerator:
                 start_ms=ep.segments[0].start_ms if ep.segments else 0,
                 end_ms=ep.segments[0].end_ms if ep.segments else 0,
                 quote=ep.segments[0].text[:200] if ep.segments else "",
+                youtube_url=ep.youtube_url or None,
             )
             for ep in resolution.episodes[:MAX_EPISODES_IN_CONTEXT]
             if ep.segments

@@ -38,6 +38,7 @@ class EvidenceChunk(BaseModel):
     end_ms: int
     text: str
     similarity_score: float
+    youtube_url: Optional[str] = None
 
 
 class RetrievalResult(BaseModel):
@@ -171,7 +172,8 @@ class EvidenceRetriever:
                     c.text,
                     e.file_stem     AS episode_title,
                     e.guests,
-                    1 - (c.embedding <=> %s::vector) AS similarity_score
+                    1 - (c.embedding <=> %s::vector) AS similarity_score,
+                    e.youtube_url
                 FROM chunks c
                 JOIN episodes e ON c.episode_id = e.id
                 WHERE c.text IS NOT NULL
@@ -191,7 +193,7 @@ class EvidenceRetriever:
     # ── Row → EvidenceChunk ───────────────────────────────────────────────────
 
     def _row_to_chunk(self, row: tuple) -> EvidenceChunk:
-        chunk_id, episode_id, speaker, start_ms, end_ms, text, ep_title, guests_raw, sim = row
+        chunk_id, episode_id, speaker, start_ms, end_ms, text, ep_title, guests_raw, sim, yt_url = row
         guests: list[str] = guests_raw if isinstance(guests_raw, list) else []
         return EvidenceChunk(
             chunk_id=chunk_id,
@@ -203,6 +205,7 @@ class EvidenceRetriever:
             end_ms=end_ms or 0,
             text=text or "",
             similarity_score=round(float(sim), 4),
+            youtube_url=yt_url or None,
         )
 
     # ── Public API ────────────────────────────────────────────────────────────

@@ -91,9 +91,13 @@ def run(user_query: str) -> dict:
             if r.episode_id not in eps_by_id:
                 eps_by_id[r.episode_id] = ResolvedEpisode(
                     episode_id=r.episode_id, episode_title=r.episode_title,
-                    guests=[], relevance_score=1.0, segments=[])
+                    guests=[], relevance_score=1.0, segments=[],
+                    youtube_url=r.youtube_url)
+            # Use exact YouTube timestamp if available, otherwise fall back to transcript time
+            seg_start = r.youtube_start_ms if r.youtube_start_ms is not None else r.start_ms
+            seg_end   = r.youtube_end_ms   if r.youtube_end_ms   is not None else r.end_ms
             eps_by_id[r.episode_id].segments.append(EpisodeSegment(
-                start_ms=r.start_ms, end_ms=r.end_ms,
+                start_ms=seg_start, end_ms=seg_end,
                 text=f"{r.speaker}: \"{r.quote}\"",
                 speakers=[r.speaker], peak_similarity=1.0))
         resolution = ResolutionResult(
