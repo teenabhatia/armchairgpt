@@ -49,6 +49,14 @@ uvicorn api:app --reload --port 8000
 
 Then open **http://localhost:8000** in your browser.
 
+### One-command local run (recommended)
+
+If you have a virtualenv at `.venv/` and a populated `.env`, you can run:
+
+```bash
+bash scripts/run_local.sh
+```
+
 ---
 
 ## Run the agent from the command line
@@ -57,6 +65,28 @@ Then open **http://localhost:8000** in your browser.
 python3 agent.py "When did Dax talk about addiction with a doctor?"
 python3 agent.py "Who has mentioned Kristen Bell?"
 python3 agent.py "How many times has Dax said grateful?"
+```
+
+---
+
+## Evaluation framework
+
+This repo checks **intended tasks** and **edge cases, failures, and adversarial inputs** in two layers:
+
+1. **JSONL harness** — `eval/cases.jsonl` is run by `eval/run_eval.py` (default `--mode offline` stubs retrieval / generation / verification so CI does not call the network). Each case asserts response shape and expectations such as allowed `action` / `plan.intent`, required trace steps, and guardrail outcomes for empty, JSON-shaped, oversized, and injection-style strings. Use `--mode live` with a configured `.env` to exercise the real stack; the harness still checks the same expectations, not semantic answer quality.
+
+2. **Pytest** — `tests/test_agent_failure_adversarial.py` asserts specific termination behaviors (`clarify`, `not_found`, `abstain`, `abort`) under monkeypatched tools. These complement the JSONL suite (e.g. ambiguous query → clarify, empty retrieval → not_found, verifier contradiction → abstain, retrieval error → abort, planner guardrails, SQL-like and out-of-domain queries).
+
+Run the full evaluation surface:
+
+```bash
+bash scripts/run_eval_framework.sh
+```
+
+Or only pytest cases marked for agent evaluation:
+
+```bash
+python3 -m pytest -m agent_eval
 ```
 
 ---
