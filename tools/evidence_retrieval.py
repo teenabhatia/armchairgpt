@@ -159,6 +159,7 @@ class EvidenceRetriever:
         filter_params: list,
         top_k: int,
         min_sim: float,
+        min_text_len: int = 80,
     ) -> list[tuple]:
         where_sql = ("AND " + " AND ".join(conditions)) if conditions else ""
         sql = f"""
@@ -177,7 +178,7 @@ class EvidenceRetriever:
                 FROM chunks c
                 JOIN episodes e ON c.episode_id = e.id
                 WHERE c.text IS NOT NULL
-                  AND c.text <> ''
+                  AND LENGTH(c.text) >= %s
                   {where_sql}
             )
             SELECT * FROM scored
@@ -185,7 +186,7 @@ class EvidenceRetriever:
             ORDER BY similarity_score DESC
             LIMIT %s
         """
-        params = [vec_literal] + filter_params + [min_sim, top_k]
+        params = [vec_literal, min_text_len] + filter_params + [min_sim, top_k]
         with self._conn() as conn, conn.cursor() as cur:
             cur.execute(sql, params)
             return cur.fetchall()
@@ -234,9 +235,14 @@ class EvidenceRetriever:
             "date_range": plan.filters.date_range,
         }
 
+        # Clip discovery needs longer chunks and more of them to find good moments
+        is_clip = plan.intent == "clip_discovery"
+        effective_top_k = max(plan.top_k, 20) if is_clip else plan.top_k
+        min_len = 150 if is_clip else 80
+
         try:
             rows = self._run_query(
-                vec_literal, conditions, filter_params, plan.top_k, MIN_SIMILARITY
+                vec_literal, conditions, filter_params, effective_top_k, MIN_SIMILARITY, min_len
             )
         except Exception as e:
             raise RetrievalError(f"Database query failed: {e}") from e
@@ -246,7 +252,7 @@ class EvidenceRetriever:
         if not rows and conditions:
             try:
                 rows = self._run_query(
-                    vec_literal, [], [], plan.top_k, FALLBACK_MIN_SIMILARITY
+                    vec_literal, [], [], effective_top_k, FALLBACK_MIN_SIMILARITY, min_len
                 )
                 filters_relaxed = True
             except Exception as e:
