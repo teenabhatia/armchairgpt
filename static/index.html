@@ -43,6 +43,60 @@
     .logo { font-size: 22px; }
     .header-text h1 { font-size: 18px; font-weight: 700; color: var(--amber); letter-spacing: -0.3px; }
     .header-text p  { font-size: 12px; color: var(--muted); margin-top: 1px; }
+    .header-spacer  { flex: 1; }
+    .help-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--sub);
+      border-radius: 50%;
+      width: 30px; height: 30px;
+      font-size: 14px; font-weight: 700;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    .help-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+    /* ── Help modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 24px 28px;
+      max-width: 560px; width: 90%;
+      max-height: 80vh; overflow-y: auto;
+    }
+    .modal h3 { font-size: 16px; color: var(--amber); margin-bottom: 16px; }
+    .modal-close {
+      float: right; background: none; border: none;
+      color: var(--muted); font-size: 20px; cursor: pointer; line-height: 1;
+    }
+    .modal-close:hover { color: var(--text); }
+    .qtype-list { display: flex; flex-direction: column; gap: 12px; }
+    .qtype {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+    }
+    .qtype .qt-label { font-size: 12px; font-weight: 700; color: var(--amber); margin-bottom: 4px; letter-spacing: 0.3px; text-transform: uppercase; }
+    .qtype .qt-desc  { font-size: 13px; color: var(--sub); margin-bottom: 6px; line-height: 1.4; }
+    .qtype .qt-ex    { font-size: 12px; color: var(--muted); font-style: italic; }
+    .qtype .qt-limit { font-size: 11px; color: #78350f; margin-top: 4px; }
+
+    /* ── Welcome query-type guide ── */
+    .qtype-guide { margin-top: 28px; text-align: left; width: 100%; max-width: 560px; }
+    .qtype-guide summary { font-size: 12px; color: var(--muted); cursor: pointer; user-select: none; text-align: center; margin-bottom: 10px; }
+    .qtype-guide summary:hover { color: var(--sub); }
 
     /* ── Chat area ── */
     #chat {
@@ -275,7 +329,18 @@
     <h1>ArmchairGPT</h1>
     <p>Armchair Expert knowledge base</p>
   </div>
+  <div class="header-spacer"></div>
+  <button class="help-btn" onclick="toggleHelp()" title="What can I ask?">?</button>
 </header>
+
+<!-- Help modal -->
+<div class="modal-overlay" id="help-modal" onclick="closeHelpOnBg(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="toggleHelp()">×</button>
+    <h3>What can I ask?</h3>
+    <div class="qtype-list" id="qtype-content"></div>
+  </div>
+</div>
 
 <div id="chat">
   <div class="welcome" id="welcome">
@@ -289,6 +354,10 @@
       <button class="example-btn" onclick="sendExample(this)">Find a clip about marriage and relationships</button>
       <button class="example-btn" onclick="sendExample(this)">Episodes about grief and loss</button>
     </div>
+    <details class="qtype-guide">
+      <summary>What kinds of questions can I ask? ▾</summary>
+      <div class="qtype-list" id="qtype-welcome"></div>
+    </details>
   </div>
 </div>
 
@@ -308,6 +377,62 @@
   input.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) sendQuery(); });
 
   function sendExample(btn) { input.value = btn.textContent; sendQuery(); }
+
+  // ── Query type guide ──────────────────────────────────────────────────────
+  const QUERY_TYPES = [
+    {
+      label: "Factual Q&A",
+      desc: "Ask what was said about a specific topic, person, or event in a particular episode.",
+      ex: '"What did Matthew McConaughey say about his dad?" · "When did Dax talk about sobriety?"',
+    },
+    {
+      label: "Topic / Episode Search",
+      desc: "Find episodes or discussions on a broad theme — returns the most relevant episodes.",
+      ex: '"Episodes about grief and loss" · "When did they talk about parenting?"',
+    },
+    {
+      label: "Clip Discovery",
+      desc: "Find the best clip-worthy moments — returns timestamped spans with a reason each is notable.",
+      ex: '"Find a funny clip about marriage" · "Best moments about childhood memories"',
+    },
+    {
+      label: "Mentions Lookup",
+      desc: "Find out who has mentioned a specific person, or whether two people have talked about each other.",
+      ex: '"Who has mentioned Kristen Bell?" · "Has Dax ever mentioned LeBron James?"',
+    },
+    {
+      label: "Word / Phrase Frequency",
+      desc: "Count how many times a word or phrase has been said across all episodes, with top episodes.",
+      ex: '"How many times has Dax said grateful?" · "How often does Monica say honestly?"',
+    },
+    {
+      label: "Not supported",
+      desc: "Questions that require summarising the entire archive — e.g. \"What are Dax's most common topics?\" or \"Give me a full summary of the podcast.\" The system works from specific retrieved excerpts, not a global index.",
+      ex: null,
+      limit: true,
+    },
+  ];
+
+  function buildQtypeHTML() {
+    return QUERY_TYPES.map(qt => `
+      <div class="qtype">
+        <div class="qt-label">${qt.label}</div>
+        <div class="qt-desc">${qt.desc}</div>
+        ${qt.ex ? `<div class="qt-ex">e.g. ${qt.ex}</div>` : ''}
+        ${qt.limit ? '<div class="qt-limit">⚠ Not supported by this system</div>' : ''}
+      </div>`).join('');
+  }
+
+  document.getElementById('qtype-content').innerHTML = buildQtypeHTML();
+  document.getElementById('qtype-welcome').innerHTML  = buildQtypeHTML();
+
+  function toggleHelp() {
+    document.getElementById('help-modal').classList.toggle('open');
+  }
+  function closeHelpOnBg(e) {
+    if (e.target === document.getElementById('help-modal')) toggleHelp();
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') document.getElementById('help-modal').classList.remove('open'); });
 
   function msToTs(ms) {
     const s  = Math.floor(ms / 1000);
