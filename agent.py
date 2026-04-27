@@ -1,9 +1,9 @@
 """
-ArmchairGPT Agent — full pipeline.
+ArmchairGPT Agent — full pipeline with trace output.
 
 Routing:
   mention_lookup  → MentionsLookup → AnswerGenerator → SupportVerifier
-  frequency       → FrequencyAnalyzer → AnswerGenerator → SupportVerifier
+  frequency       → FrequencyAnalyzer (no LLM needed)
   QA/search/clip  → EvidenceRetriever → EpisodeResolver → AnswerGenerator → SupportVerifier
   clarify         → return clarification request immediately
 """
@@ -19,12 +19,16 @@ from tools.frequency_analysis import FrequencyAnalyzer, FrequencyError
 
 
 def run(user_query: str) -> dict:
+    trace = []
+
+    def t(step: str, status: str, detail: str):
+        trace.append({"step": step, "status": status, "detail": detail})
+
     planner   = QueryPlanner()
     retriever = EvidenceRetriever()
     resolver  = EpisodeResolver()
     mentions  = MentionsLookup()
     freq      = FrequencyAnalyzer()
-    # Generator and verifier are lazy — only instantiated when the route needs them
     _generator = None
     _verifier  = None
 
@@ -44,149 +48,151 @@ def run(user_query: str) -> dict:
     try:
         plan = planner.plan(user_query)
     except PlannerError as e:
-        return {"error": str(e), "action": "clarify"}
+        t("Query Planning", "error", str(e))
+        return {"error": str(e), "action": "clarify", "trace": trace}
 
     if plan.intent == "clarify":
-        return {"action": "clarify", "message": plan.clarification_needed}
+        t("Query Planning", "warning", "Query too vague — asking for clarification")
+        return {"action": "clarify", "message": plan.clarification_needed, "trace": trace}
 
-    print(f"[Tool 1] intent={plan.intent}  strategy={plan.strategy}  top_k={plan.top_k}")
-    print(f"         entities={plan.entities.model_dump()}  filters={plan.filters.model_dump()}\n")
+    t("Query Planning", "ok",
+      f"intent={plan.intent} · strategy={plan.strategy} · top_k={plan.top_k}")
 
     # ── Route: mention_lookup ─────────────────────────────────────────────────
     if plan.intent == "mention_lookup":
+        persons = plan.entities.persons
+        if not persons:
+            t("Mentions Lookup", "warning", "No person specified")
+            return {"action": "clarify",
+                    "message": "Who would you like to look up mentions of?",
+                    "trace": trace}
+
+        person = persons[0]
+        speaker = plan.filters.guest
         try:
-            persons = plan.entities.persons
-            if not persons:
-                return {"action": "clarify", "message": "Who would you like to look up mentions of?"}
-
-            person = persons[0]
-            speaker = plan.filters.guest
-
-            if speaker:
-                result = mentions.lookup_connection(speaker, person)
-            else:
-                result = mentions.lookup_about(person)
-
-            print(f"[Mentions] Found {result.total_found} mention(s) of '{person}'")
-
-            # Synthesise a plain-language answer from mentions
-            if not result.records:
-                return {
-                    "action": "not_found",
-                    "message": f"No mentions of '{person}' found in the transcript archive.",
-                    "plan": plan.model_dump(),
-                }
-
-            # Build a minimal ResolutionResult so AnswerGenerator can work uniformly
-            from tools.episode_resolution import ResolvedEpisode, EpisodeSegment
-            eps_by_id: dict = {}
-            for r in result.records:
-                if r.episode_id not in eps_by_id:
-                    eps_by_id[r.episode_id] = ResolvedEpisode(
-                        episode_id=r.episode_id,
-                        episode_title=r.episode_title,
-                        guests=[],
-                        relevance_score=1.0,
-                        segments=[],
-                    )
-                eps_by_id[r.episode_id].segments.append(EpisodeSegment(
-                    start_ms=r.start_ms,
-                    end_ms=r.end_ms,
-                    text=f"{r.speaker}: \"{r.quote}\"",
-                    speakers=[r.speaker],
-                    peak_similarity=1.0,
-                ))
-            resolution = ResolutionResult(
-                episodes=list(eps_by_id.values())[:5],
-                total_episodes=len(eps_by_id),
-            )
-
+            result = mentions.lookup_connection(speaker, person) if speaker \
+                else mentions.lookup_about(person)
         except MentionsError as e:
-            return {"error": str(e), "action": "abort"}
+            t("Mentions Lookup", "error", str(e))
+            return {"error": str(e), "action": "abort", "trace": trace}
+
+        t("Mentions Lookup", "ok" if result.total_found else "warning",
+          f"{result.total_found} mention(s) of '{person}' across "
+          f"{len({r.episode_id for r in result.records})} episode(s)")
+
+        if not result.records:
+            return {"action": "not_found",
+                    "message": f"No mentions of '{person}' found in the transcript archive.",
+                    "trace": trace}
+
+        from tools.episode_resolution import ResolvedEpisode, EpisodeSegment
+        eps_by_id: dict = {}
+        for r in result.records:
+            if r.episode_id not in eps_by_id:
+                eps_by_id[r.episode_id] = ResolvedEpisode(
+                    episode_id=r.episode_id, episode_title=r.episode_title,
+                    guests=[], relevance_score=1.0, segments=[])
+            eps_by_id[r.episode_id].segments.append(EpisodeSegment(
+                start_ms=r.start_ms, end_ms=r.end_ms,
+                text=f"{r.speaker}: \"{r.quote}\"",
+                speakers=[r.speaker], peak_similarity=1.0))
+        resolution = ResolutionResult(
+            episodes=list(eps_by_id.values())[:5],
+            total_episodes=len(eps_by_id))
 
     # ── Route: frequency ──────────────────────────────────────────────────────
     elif plan.intent == "frequency":
-        keywords = plan.entities.keywords or plan.entities.topic
-        phrase = keywords[0] if isinstance(keywords, list) and keywords else (keywords or "")
+        keywords = plan.entities.keywords
+        phrase = keywords[0] if keywords else (plan.entities.topic or "")
         if not phrase:
-            return {"action": "clarify", "message": "What word or phrase would you like to count?"}
-
+            t("Frequency Analysis", "warning", "No phrase specified")
+            return {"action": "clarify",
+                    "message": "What word or phrase would you like to count?",
+                    "trace": trace}
         try:
             freq_result = freq.count(phrase)
         except FrequencyError as e:
-            return {"error": str(e), "action": "abort"}
+            t("Frequency Analysis", "error", str(e))
+            return {"error": str(e), "action": "abort", "trace": trace}
 
-        print(f"[Frequency] '{phrase}' found in {freq_result.total_utterances} utterances "
-              f"across {freq_result.total_episodes} episodes")
+        t("Frequency Analysis", "ok",
+          f"\"{phrase}\" in {freq_result.total_utterances} utterances "
+          f"across {freq_result.total_episodes} episodes")
 
-        # Build summary answer directly (no LLM needed for a count)
         top_eps = "\n".join(
-            f"  - {e.episode_title}: {e.count} time(s)"
-            for e in freq_result.top_episodes[:5]
-        )
+            f"  • {e.episode_title}: {e.count}×"
+            for e in freq_result.top_episodes[:5])
         answer_text = (
-            f"The phrase \"{phrase}\" appears in {freq_result.total_utterances} utterances "
-            f"across {freq_result.total_episodes} episode(s).\n\nTop episodes:\n{top_eps}"
-        )
+            f'"{phrase}" appears **{freq_result.total_utterances} times** '
+            f'across **{freq_result.total_episodes} episodes**.\n\n'
+            f'Top episodes:\n{top_eps}')
         if freq_result.example_quotes:
             q = freq_result.example_quotes[0]
-            answer_text += f'\n\nExample: {q.speaker} in "{q.episode_title}": "{q.text[:200]}"'
-
+            answer_text += (f'\n\nExample — {q.speaker} in "{q.episode_title}":\n'
+                            f'"{q.text[:200]}"')
         return {
             "action": "return_answer",
             "answer": answer_text,
+            "citations": [],
+            "supported": True,
+            "unsupported_claims": [],
             "plan": plan.model_dump(),
             "frequency": freq_result.model_dump(),
+            "trace": trace,
         }
 
-    # ── Route: RAG pipeline (QA / search / clip_discovery) ───────────────────
+    # ── Route: RAG pipeline ───────────────────────────────────────────────────
     else:
         try:
             retrieval = retriever.retrieve(plan)
         except RetrievalError as e:
-            return {"error": str(e), "action": "abort"}
-
-        if retrieval.filters_relaxed:
-            print("[Tool 2] Metadata filters returned no results — fell back to semantic search.")
+            t("Evidence Retrieval", "error", str(e))
+            return {"error": str(e), "action": "abort", "trace": trace}
 
         if not retrieval.chunks:
-            return {
-                "action": "not_found",
-                "message": "No relevant transcript spans found for your query.",
-                "plan": plan.model_dump(),
-            }
+            t("Evidence Retrieval", "warning", "No relevant chunks found")
+            return {"action": "not_found",
+                    "message": "No relevant transcript spans found for your query.",
+                    "trace": trace}
 
-        print(f"[Tool 2] Retrieved {retrieval.total_found} chunk(s) "
-              f"(query: '{retrieval.query_text_used}')")
+        t("Evidence Retrieval",
+          "warning" if retrieval.filters_relaxed else "ok",
+          f"{retrieval.total_found} chunks retrieved"
+          + (" (filters relaxed — no exact match)" if retrieval.filters_relaxed else ""))
 
         try:
             resolution = resolver.resolve(retrieval)
         except ResolutionError as e:
-            return {"error": str(e), "action": "abort"}
+            t("Episode Resolution", "error", str(e))
+            return {"error": str(e), "action": "abort", "trace": trace}
 
-        print(f"[Tool 3] Resolved {resolution.total_episodes} episode(s):")
-        for ep in resolution.episodes[:3]:
-            print(f"  - {ep.episode_title}  score={ep.relevance_score:.3f}  "
-                  f"segments={len(ep.segments)}")
+        top_ep = resolution.episodes[0].episode_title if resolution.episodes else "—"
+        t("Episode Resolution", "ok",
+          f"{resolution.total_episodes} episode(s) · top: {top_ep}")
 
-    # ── Answer Generation (shared by all non-frequency routes) ───────────────
+    # ── Answer Generation ─────────────────────────────────────────────────────
     try:
         answer = generator().generate(user_query, plan, resolution)
     except GenerationError as e:
-        return {"error": str(e), "action": "abort"}
+        t("Answer Generation", "error", str(e))
+        return {"error": str(e), "action": "abort", "trace": trace}
 
-    print(f"\n[Generation] Answer generated (grounded={answer.grounded})")
-    print(f"  {answer.answer[:200]}...")
+    t("Answer Generation",
+      "ok" if answer.grounded else "warning",
+      "Grounded answer synthesised" if answer.grounded else "Answer flagged as ungrounded")
 
     # ── Tool 4: Support Verification ─────────────────────────────────────────
     try:
         verification = verifier().verify(answer, resolution)
     except VerificationError as e:
-        return {"error": str(e), "action": "abort"}
+        t("Support Verification", "error", str(e))
+        return {"error": str(e), "action": "abort", "trace": trace}
 
-    print(f"[Tool 4] supported={verification.supported}  "
-          f"action={verification.action}  "
-          f"unsupported={verification.unsupported_claims}")
+    t("Support Verification",
+      "ok" if verification.supported else "warning",
+      f"action={verification.action}"
+      + (f" · {len(verification.unsupported_claims)} unsupported claim(s)"
+         if verification.unsupported_claims else ""))
 
     return {
         "action": verification.action,
@@ -199,6 +205,7 @@ def run(user_query: str) -> dict:
             "total_episodes": resolution.total_episodes,
             "top_episode": resolution.episodes[0].episode_title if resolution.episodes else None,
         },
+        "trace": trace,
     }
 
 
