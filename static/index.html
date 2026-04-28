@@ -123,9 +123,12 @@
     .qtype-guide summary:hover { color: var(--sub); }
 
     /* ── Chat area ── */
-    #chat {
+    #chat-scroll {
       flex: 1;
       overflow-y: auto;
+      width: 100%;
+    }
+    #chat {
       padding: 18px 16px 24px;
       display: flex;
       flex-direction: column;
@@ -133,6 +136,7 @@
       max-width: 860px;
       width: 100%;
       margin: 0 auto;
+      min-height: 100%;
     }
 
     /* ── Welcome screen ── */
@@ -459,9 +463,9 @@
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
 
     /* ── Scrollbar ── */
-    #chat::-webkit-scrollbar       { width: 4px; }
-    #chat::-webkit-scrollbar-track { background: transparent; }
-    #chat::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    #chat-scroll::-webkit-scrollbar       { width: 4px; }
+    #chat-scroll::-webkit-scrollbar-track { background: transparent; }
+    #chat-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
     @media (max-width: 520px) {
       header { padding: 12px 12px; }
@@ -512,6 +516,7 @@
   </div>
 </div>
 
+<div id="chat-scroll">
 <div id="chat">
   <div class="welcome" id="welcome">
     <h2>Ask the transcript archive</h2>
@@ -530,6 +535,7 @@
     </details>
   </div>
 </div>
+</div>
 
 <footer>
   <div class="input-row">
@@ -541,6 +547,7 @@
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
+  const chatScroll = document.getElementById('chat-scroll');
   const chat      = document.getElementById('chat');
   const input     = document.getElementById('query-input');
   const sendBtn   = document.getElementById('send-btn');
@@ -672,7 +679,7 @@
     if (cls) el.className = cls;
     el.innerHTML = html;
     chat.appendChild(el);
-    chat.scrollTop = chat.scrollHeight;
+    chatScroll.scrollTop = chatScroll.scrollHeight;
     return el;
   }
 
