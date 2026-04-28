@@ -1,0 +1,9 @@
+assemblyai>=0.30.0
+psycopg2-binary>=2.9
+sentence-transformers>=3.0
+python-dotenv>=1.0
+requests>=2.31
+google-genai>=1.0
+yt-dlp>=2025.3.31
+youtube-transcript-api>=1.0.3
+httpx>=0.27.0

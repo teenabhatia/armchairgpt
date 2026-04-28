@@ -22,3 +22,9 @@ htmlcov/
 
 # macOS
 .DS_Store
+
+# Ingestion — local artifacts never to commit
+ingestion/*.log
+ingestion/youtube_cookies.txt
+ingestion/transcripts/
+ingestion/youtube_transcripts/
