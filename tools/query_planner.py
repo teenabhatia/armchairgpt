@@ -121,7 +121,7 @@ Intent guide:
 - QA: user wants a specific factual answer ("When did Dax talk about X?")
 - search: user wants to explore a topic ("episodes about mental health")
 - clip_discovery: user wants shareable/quotable moments ("find a funny clip about marriage")
-- mention_lookup: user wants to know who talked about whom ("what has guest X said about person Y?", "who has mentioned Kristen Bell?", "who has talked about who")
+- mention_lookup: user wants to know who talked about a SPECIFIC NAMED public figure ("who has mentioned Kristen Bell?", "has anyone talked about LeBron James?"). Only use when the target is a real named person — NOT for relational terms like "his father", "her mother", "their kids", "his ex". Those should be QA or search.
 - frequency: user wants a count of how often a word/phrase appears ("how many times has Dax said gratitude?", "how often do guests mention therapy?")
 - clarify: query is too vague to plan (set clarification_needed)
 
